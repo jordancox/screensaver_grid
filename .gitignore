@@ -1,0 +1,15 @@
+# Media files and clips
+*.mp4
+*.avi
+*.mov
+*.mkv
+NESclips/
+archive_movies/
+bass/
+clips_temp/
+first_simpsons/
+movies/
+simpsons/
+
+# macOS
+.DS_Store
