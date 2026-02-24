@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Generate a grid screensaver with staggered clip changes.
-Each clip plays for CLIP_DURATION seconds, grid positions change left-to-right,
-top-to-bottom every CHANGE_INTERVAL seconds.
+Generate a grid screensaver video.
+All grid positions play clips simultaneously. Each position cycles through
+its assigned clips back-to-back, looping shorter positions to match the longest.
 
-V2: Adds automatic framerate detection - uses the most common framerate from source videos.
+V2: Automatic framerate detection, variable-length clip support, pre-cut clips mode.
 """
 
 import os
@@ -18,7 +18,6 @@ from collections import Counter
 # Configuration (set by user prompts or defaults)
 USE_PRECUT_CLIPS = False  # Mode 2: use pre-cut clips instead of extracting from long videos
 CLIP_DURATION = 10  # seconds
-CHANGE_INTERVAL = 2  # seconds between position changes
 GRID_ROWS = 4
 GRID_COLS = 4
 TOTAL_POSITIONS = GRID_ROWS * GRID_COLS  # 16
@@ -36,7 +35,7 @@ VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.mpg', '.mpeg', '.w
 def get_user_config():
     """Prompt user for configuration parameters."""
     global OUTPUT_WIDTH, OUTPUT_HEIGHT, GRID_ROWS, GRID_COLS, TOTAL_POSITIONS
-    global CELL_WIDTH, CELL_HEIGHT, TOTAL_CLIPS, CLIP_DURATION, CHANGE_INTERVAL
+    global CELL_WIDTH, CELL_HEIGHT, TOTAL_CLIPS, CLIP_DURATION
     global USE_PRECUT_CLIPS
 
     print("\n=== Grid Screensaver Generator V2 ===\n")
@@ -142,81 +141,33 @@ def get_user_config():
             except ValueError:
                 print("Please enter a valid number.")
 
-        # Clip duration and change interval with validation
+        # Clip duration
+        print("\nClip duration:")
         while True:
-            # Clip duration
-            print("\nClip duration:")
-            while True:
-                duration_input = input("Seconds per clip (default: 10): ").strip()
-                if not duration_input:
-                    CLIP_DURATION = 10
-                    break
-                try:
-                    CLIP_DURATION = float(duration_input)
-                    if CLIP_DURATION > 0:
-                        break
-                    else:
-                        print("Duration must be positive.")
-                except ValueError:
-                    print("Please enter a valid number.")
-
-            # Change interval
-            print("\nChange interval:")
-            print("  (Time between each grid position changing)")
-            while True:
-                interval_input = input("Seconds between changes (default: 2): ").strip()
-                if not interval_input:
-                    CHANGE_INTERVAL = 2
-                    break
-                try:
-                    CHANGE_INTERVAL = float(interval_input)
-                    if CHANGE_INTERVAL > 0:
-                        break
-                    else:
-                        print("Interval must be positive.")
-                except ValueError:
-                    print("Please enter a valid number.")
-
-            # Validate timing
-            full_cycle_time = TOTAL_POSITIONS * CHANGE_INTERVAL
-
-            if CLIP_DURATION < full_cycle_time:
-                print(f"\n⚠️  WARNING: Timing issue detected!")
-                print(f"   Grid has {TOTAL_POSITIONS} positions")
-                print(f"   Full cycle time: {full_cycle_time}s ({TOTAL_POSITIONS} positions × {CHANGE_INTERVAL}s)")
-                print(f"   Clip duration: {CLIP_DURATION}s")
-                print(f"\n   Problem: Clips will end before the next clip arrives in that position.")
-                print(f"   Each position will show black/frozen frames for {full_cycle_time - CLIP_DURATION:.1f}s")
-                print(f"\n   Solutions:")
-                print(f"   1) Increase clip duration to at least {full_cycle_time}s")
-                print(f"   2) Decrease change interval to at most {CLIP_DURATION / TOTAL_POSITIONS:.2f}s")
-                print(f"   3) Use a smaller grid")
-
-                choice = input("\nDo you want to adjust these values? [Y/n]: ").strip().lower()
-                if not choice or choice == 'y':
-                    continue  # Loop back to re-enter clip duration and interval
-                else:
-                    print("Proceeding anyway (you'll see gaps in playback)...")
-                    break
-            else:
-                # Timing is good
+            duration_input = input("Seconds per clip (default: 10): ").strip()
+            if not duration_input:
+                CLIP_DURATION = 10
                 break
+            try:
+                CLIP_DURATION = float(duration_input)
+                if CLIP_DURATION > 0:
+                    break
+                else:
+                    print("Duration must be positive.")
+            except ValueError:
+                print("Please enter a valid number.")
 
         # Summary
-        num_cycles = TOTAL_CLIPS // TOTAL_POSITIONS
-        cycle_duration = TOTAL_POSITIONS * CHANGE_INTERVAL
-        total_duration = num_cycles * cycle_duration
+        clips_per_position = TOTAL_CLIPS // TOTAL_POSITIONS
+        total_duration = clips_per_position * CLIP_DURATION
 
         print("\n=== Configuration Summary ===")
         print(f"Mode: Extract from long videos")
         print(f"Output: {OUTPUT_WIDTH}x{OUTPUT_HEIGHT}")
         print(f"Grid: {GRID_ROWS}x{GRID_COLS} ({TOTAL_POSITIONS} positions)")
         print(f"Cell size: {CELL_WIDTH}x{CELL_HEIGHT}")
-        print(f"Total clips: {TOTAL_CLIPS}")
+        print(f"Total clips: {TOTAL_CLIPS} ({clips_per_position} per position)")
         print(f"Clip duration: {CLIP_DURATION}s")
-        print(f"Change interval: {CHANGE_INTERVAL}s")
-        print(f"Complete cycles: {num_cycles}")
-        print(f"Full cycle duration: {cycle_duration}s")
         print(f"Estimated video length: {total_duration}s (~{total_duration/60:.1f} minutes)")
         print()
 
