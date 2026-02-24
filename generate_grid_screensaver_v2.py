@@ -372,24 +372,27 @@ def prepare_precut_clips(video_files, output_dir):
             skipped += 1
             continue
 
-        if duration < CLIP_DURATION:
-            print(f"  Skipping {source_video.name} - too short ({duration:.1f}s < {CLIP_DURATION}s)")
+        if duration < 2.0:
+            print(f"  Skipping {source_video.name} - too short ({duration:.1f}s < 2s)")
             skipped += 1
             continue
 
         output_clip = output_dir / f"clip_{len(clips):04d}.mp4"
 
+        trim_duration = min(duration, CLIP_DURATION)
+
         cmd = [
             'ffmpeg',
             '-i', str(source_video),
-            '-t', str(CLIP_DURATION),
+            '-t', str(trim_duration),
             '-vf', f'scale={CELL_WIDTH}:{CELL_HEIGHT}:force_original_aspect_ratio=increase,crop={CELL_WIDTH}:{CELL_HEIGHT},fps={TARGET_FPS}',
             '-an',
             '-y',
             str(output_clip)
         ]
 
-        print(f"  [{len(clips)+1}] {source_video.name} ({duration:.1f}s) -> trimmed to {CLIP_DURATION}s")
+        trim_note = f" -> trimmed to {CLIP_DURATION}s" if duration > CLIP_DURATION else ""
+        print(f"  [{len(clips)+1}] {source_video.name} ({duration:.1f}s){trim_note}")
 
         try:
             subprocess.run(cmd, capture_output=True, check=True)
@@ -477,14 +480,18 @@ def generate_grid_video(position_videos, output_file):
     # Each position plays its concatenated clips
     # We need the duration of the longest position video
 
-    # Get duration of first position video (they should all be similar length)
-    first_duration = get_video_duration(position_videos[0])
-    if first_duration is None:
-        print("Error: Could not determine position video duration")
-        sys.exit(1)
+    # Find the longest position video to use as total duration
+    # Shorter position videos will be looped to match
+    max_duration = 0
+    for pv in position_videos:
+        dur = get_video_duration(pv)
+        if dur is None:
+            print(f"Error: Could not determine duration for {pv}")
+            sys.exit(1)
+        max_duration = max(max_duration, dur)
+        print(f"  {pv.name}: {dur:.1f}s")
 
-    # All positions start simultaneously, so duration matches the position videos
-    total_duration = first_duration
+    total_duration = max_duration
 
     print(f"Total output duration: {total_duration:.1f}s")
 
@@ -496,9 +503,9 @@ def generate_grid_video(position_videos, output_file):
     base_canvas = f"color=c=black:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT}:d={total_duration}:r={TARGET_FPS}[base]"
     filter_parts.append(base_canvas)
 
-    # Add position videos as inputs
+    # Add position videos as inputs, looping to fill total duration
     for pos_video in position_videos:
-        input_args.extend(['-i', str(pos_video)])
+        input_args.extend(['-stream_loop', '-1', '-i', str(pos_video)])
 
     # Overlay each position at the correct location and time
     previous_stream = "[base]"
