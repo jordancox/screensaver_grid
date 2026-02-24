@@ -377,9 +377,8 @@ def generate_grid_video(position_videos, output_file):
         print("Error: Could not determine position video duration")
         sys.exit(1)
 
-    # Total duration = last position delay + clip duration
-    max_delay = (TOTAL_POSITIONS - 1) * CHANGE_INTERVAL
-    total_duration = max_delay + first_duration
+    # All positions start simultaneously, so duration matches the position videos
+    total_duration = first_duration
 
     print(f"Total output duration: {total_duration:.1f}s")
 
@@ -403,15 +402,12 @@ def generate_grid_video(position_videos, output_file):
         col = pos % GRID_COLS
         x = col * CELL_WIDTH
         y = row * CELL_HEIGHT
-        delay = pos * CHANGE_INTERVAL
-
         if pos < len(position_videos) - 1:
             output_stream = f"[tmp{pos}]"
         else:
             output_stream = "[out]"
 
-        # Overlay with enable expression to start at the right time
-        overlay_filter = f"{previous_stream}[{pos}:v]overlay=x={x}:y={y}:enable='gte(t,{delay})'{output_stream}"
+        overlay_filter = f"{previous_stream}[{pos}:v]overlay=x={x}:y={y}{output_stream}"
         filter_parts.append(overlay_filter)
         previous_stream = output_stream
 
