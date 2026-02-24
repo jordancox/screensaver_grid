@@ -16,6 +16,7 @@ from pathlib import Path
 from collections import Counter
 
 # Configuration (set by user prompts or defaults)
+USE_PRECUT_CLIPS = False  # Mode 2: use pre-cut clips instead of extracting from long videos
 CLIP_DURATION = 10  # seconds
 CHANGE_INTERVAL = 2  # seconds between position changes
 GRID_ROWS = 4
@@ -36,6 +37,7 @@ def get_user_config():
     """Prompt user for configuration parameters."""
     global OUTPUT_WIDTH, OUTPUT_HEIGHT, GRID_ROWS, GRID_COLS, TOTAL_POSITIONS
     global CELL_WIDTH, CELL_HEIGHT, TOTAL_CLIPS, CLIP_DURATION, CHANGE_INTERVAL
+    global USE_PRECUT_CLIPS
 
     print("\n=== Grid Screensaver Generator V2 ===\n")
 
@@ -74,29 +76,27 @@ def get_user_config():
     CELL_WIDTH = OUTPUT_WIDTH // GRID_COLS
     CELL_HEIGHT = OUTPUT_HEIGHT // GRID_ROWS
 
-    # Total clips
-    print(f"\nTotal number of clips to extract:")
-    print(f"  (Grid has {TOTAL_POSITIONS} positions. Suggest multiples of {TOTAL_POSITIONS} for complete cycles)")
+    # Mode selection
+    print("\nClip mode:")
+    print("  1) Extract from long videos (random segments)")
+    print("  2) Use pre-cut clips (e.g. from Resolve scene cuts)")
     while True:
-        clips_input = input(f"Enter number of clips (default: {TOTAL_POSITIONS * 5}): ").strip()
-        if not clips_input:
-            TOTAL_CLIPS = TOTAL_POSITIONS * 5
+        mode_choice = input("Choose [1-2] (default: 1): ").strip() or "1"
+        if mode_choice == "1":
+            USE_PRECUT_CLIPS = False
             break
-        try:
-            TOTAL_CLIPS = int(clips_input)
-            if TOTAL_CLIPS >= TOTAL_POSITIONS:
-                break
-            else:
-                print(f"Need at least {TOTAL_POSITIONS} clips for one full cycle.")
-        except ValueError:
-            print("Please enter a valid number.")
+        elif mode_choice == "2":
+            USE_PRECUT_CLIPS = True
+            break
+        else:
+            print("Invalid choice. Please enter 1 or 2.")
 
-    # Clip duration and change interval with validation
-    while True:
-        # Clip duration
-        print("\nClip duration:")
+    if USE_PRECUT_CLIPS:
+        # Pre-cut clips mode: only need max clip duration
+        print("\nMax clip duration:")
+        print("  (Clips longer than this will be trimmed; shorter clips will be skipped)")
         while True:
-            duration_input = input("Seconds per clip (default: 10): ").strip()
+            duration_input = input("Seconds (default: 10): ").strip()
             if not duration_input:
                 CLIP_DURATION = 10
                 break
@@ -109,69 +109,121 @@ def get_user_config():
             except ValueError:
                 print("Please enter a valid number.")
 
-        # Change interval
-        print("\nChange interval:")
-        print("  (Time between each grid position changing)")
+        # Summary for pre-cut mode
+        print("\n=== Configuration Summary ===")
+        print(f"Mode: Pre-cut clips")
+        print(f"Output: {OUTPUT_WIDTH}x{OUTPUT_HEIGHT}")
+        print(f"Grid: {GRID_ROWS}x{GRID_COLS} ({TOTAL_POSITIONS} positions)")
+        print(f"Cell size: {CELL_WIDTH}x{CELL_HEIGHT}")
+        print(f"Max clip duration: {CLIP_DURATION}s")
+        print(f"Total clips: determined by source directory")
+        print()
+
+        confirm = input("Proceed with these settings? [Y/n]: ").strip().lower()
+        if confirm and confirm != 'y':
+            print("Aborted.")
+            sys.exit(0)
+    else:
+        # Original mode: extract from long videos
+        # Total clips
+        print(f"\nTotal number of clips to extract:")
+        print(f"  (Grid has {TOTAL_POSITIONS} positions. Suggest multiples of {TOTAL_POSITIONS} for complete cycles)")
         while True:
-            interval_input = input("Seconds between changes (default: 2): ").strip()
-            if not interval_input:
-                CHANGE_INTERVAL = 2
+            clips_input = input(f"Enter number of clips (default: {TOTAL_POSITIONS * 5}): ").strip()
+            if not clips_input:
+                TOTAL_CLIPS = TOTAL_POSITIONS * 5
                 break
             try:
-                CHANGE_INTERVAL = float(interval_input)
-                if CHANGE_INTERVAL > 0:
+                TOTAL_CLIPS = int(clips_input)
+                if TOTAL_CLIPS >= TOTAL_POSITIONS:
                     break
                 else:
-                    print("Interval must be positive.")
+                    print(f"Need at least {TOTAL_POSITIONS} clips for one full cycle.")
             except ValueError:
                 print("Please enter a valid number.")
 
-        # Validate timing
-        full_cycle_time = TOTAL_POSITIONS * CHANGE_INTERVAL
+        # Clip duration and change interval with validation
+        while True:
+            # Clip duration
+            print("\nClip duration:")
+            while True:
+                duration_input = input("Seconds per clip (default: 10): ").strip()
+                if not duration_input:
+                    CLIP_DURATION = 10
+                    break
+                try:
+                    CLIP_DURATION = float(duration_input)
+                    if CLIP_DURATION > 0:
+                        break
+                    else:
+                        print("Duration must be positive.")
+                except ValueError:
+                    print("Please enter a valid number.")
 
-        if CLIP_DURATION < full_cycle_time:
-            print(f"\n⚠️  WARNING: Timing issue detected!")
-            print(f"   Grid has {TOTAL_POSITIONS} positions")
-            print(f"   Full cycle time: {full_cycle_time}s ({TOTAL_POSITIONS} positions × {CHANGE_INTERVAL}s)")
-            print(f"   Clip duration: {CLIP_DURATION}s")
-            print(f"\n   Problem: Clips will end before the next clip arrives in that position.")
-            print(f"   Each position will show black/frozen frames for {full_cycle_time - CLIP_DURATION:.1f}s")
-            print(f"\n   Solutions:")
-            print(f"   1) Increase clip duration to at least {full_cycle_time}s")
-            print(f"   2) Decrease change interval to at most {CLIP_DURATION / TOTAL_POSITIONS:.2f}s")
-            print(f"   3) Use a smaller grid")
+            # Change interval
+            print("\nChange interval:")
+            print("  (Time between each grid position changing)")
+            while True:
+                interval_input = input("Seconds between changes (default: 2): ").strip()
+                if not interval_input:
+                    CHANGE_INTERVAL = 2
+                    break
+                try:
+                    CHANGE_INTERVAL = float(interval_input)
+                    if CHANGE_INTERVAL > 0:
+                        break
+                    else:
+                        print("Interval must be positive.")
+                except ValueError:
+                    print("Please enter a valid number.")
 
-            choice = input("\nDo you want to adjust these values? [Y/n]: ").strip().lower()
-            if not choice or choice == 'y':
-                continue  # Loop back to re-enter clip duration and interval
+            # Validate timing
+            full_cycle_time = TOTAL_POSITIONS * CHANGE_INTERVAL
+
+            if CLIP_DURATION < full_cycle_time:
+                print(f"\n⚠️  WARNING: Timing issue detected!")
+                print(f"   Grid has {TOTAL_POSITIONS} positions")
+                print(f"   Full cycle time: {full_cycle_time}s ({TOTAL_POSITIONS} positions × {CHANGE_INTERVAL}s)")
+                print(f"   Clip duration: {CLIP_DURATION}s")
+                print(f"\n   Problem: Clips will end before the next clip arrives in that position.")
+                print(f"   Each position will show black/frozen frames for {full_cycle_time - CLIP_DURATION:.1f}s")
+                print(f"\n   Solutions:")
+                print(f"   1) Increase clip duration to at least {full_cycle_time}s")
+                print(f"   2) Decrease change interval to at most {CLIP_DURATION / TOTAL_POSITIONS:.2f}s")
+                print(f"   3) Use a smaller grid")
+
+                choice = input("\nDo you want to adjust these values? [Y/n]: ").strip().lower()
+                if not choice or choice == 'y':
+                    continue  # Loop back to re-enter clip duration and interval
+                else:
+                    print("Proceeding anyway (you'll see gaps in playback)...")
+                    break
             else:
-                print("Proceeding anyway (you'll see gaps in playback)...")
+                # Timing is good
                 break
-        else:
-            # Timing is good
-            break
 
-    # Summary
-    num_cycles = TOTAL_CLIPS // TOTAL_POSITIONS
-    cycle_duration = TOTAL_POSITIONS * CHANGE_INTERVAL
-    total_duration = num_cycles * cycle_duration
+        # Summary
+        num_cycles = TOTAL_CLIPS // TOTAL_POSITIONS
+        cycle_duration = TOTAL_POSITIONS * CHANGE_INTERVAL
+        total_duration = num_cycles * cycle_duration
 
-    print("\n=== Configuration Summary ===")
-    print(f"Output: {OUTPUT_WIDTH}x{OUTPUT_HEIGHT}")
-    print(f"Grid: {GRID_ROWS}x{GRID_COLS} ({TOTAL_POSITIONS} positions)")
-    print(f"Cell size: {CELL_WIDTH}x{CELL_HEIGHT}")
-    print(f"Total clips: {TOTAL_CLIPS}")
-    print(f"Clip duration: {CLIP_DURATION}s")
-    print(f"Change interval: {CHANGE_INTERVAL}s")
-    print(f"Complete cycles: {num_cycles}")
-    print(f"Full cycle duration: {cycle_duration}s")
-    print(f"Estimated video length: {total_duration}s (~{total_duration/60:.1f} minutes)")
-    print()
+        print("\n=== Configuration Summary ===")
+        print(f"Mode: Extract from long videos")
+        print(f"Output: {OUTPUT_WIDTH}x{OUTPUT_HEIGHT}")
+        print(f"Grid: {GRID_ROWS}x{GRID_COLS} ({TOTAL_POSITIONS} positions)")
+        print(f"Cell size: {CELL_WIDTH}x{CELL_HEIGHT}")
+        print(f"Total clips: {TOTAL_CLIPS}")
+        print(f"Clip duration: {CLIP_DURATION}s")
+        print(f"Change interval: {CHANGE_INTERVAL}s")
+        print(f"Complete cycles: {num_cycles}")
+        print(f"Full cycle duration: {cycle_duration}s")
+        print(f"Estimated video length: {total_duration}s (~{total_duration/60:.1f} minutes)")
+        print()
 
-    confirm = input("Proceed with these settings? [Y/n]: ").strip().lower()
-    if confirm and confirm != 'y':
-        print("Aborted.")
-        sys.exit(0)
+        confirm = input("Proceed with these settings? [Y/n]: ").strip().lower()
+        if confirm and confirm != 'y':
+            print("Aborted.")
+            sys.exit(0)
 
 
 def get_video_duration(video_path):
@@ -298,6 +350,60 @@ def extract_clips(video_files, num_clips, output_dir):
         except subprocess.CalledProcessError as e:
             print(f"Error extracting clip: {e}")
             continue
+
+    return clips
+
+
+def prepare_precut_clips(video_files, output_dir):
+    """Prepare pre-cut clips by trimming to max duration and scaling to cell size."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    clips = []
+    skipped = 0
+
+    print(f"\nPreparing pre-cut clips (max {CLIP_DURATION}s each) at {TARGET_FPS}fps...")
+
+    for i, source_video in enumerate(sorted(video_files)):
+        duration = get_video_duration(source_video)
+
+        if duration is None:
+            print(f"  Skipping {source_video.name} - could not read duration")
+            skipped += 1
+            continue
+
+        if duration < CLIP_DURATION:
+            print(f"  Skipping {source_video.name} - too short ({duration:.1f}s < {CLIP_DURATION}s)")
+            skipped += 1
+            continue
+
+        output_clip = output_dir / f"clip_{len(clips):04d}.mp4"
+
+        cmd = [
+            'ffmpeg',
+            '-i', str(source_video),
+            '-t', str(CLIP_DURATION),
+            '-vf', f'scale={CELL_WIDTH}:{CELL_HEIGHT}:force_original_aspect_ratio=increase,crop={CELL_WIDTH}:{CELL_HEIGHT},fps={TARGET_FPS}',
+            '-an',
+            '-y',
+            str(output_clip)
+        ]
+
+        print(f"  [{len(clips)+1}] {source_video.name} ({duration:.1f}s) -> trimmed to {CLIP_DURATION}s")
+
+        try:
+            subprocess.run(cmd, capture_output=True, check=True)
+            clips.append(output_clip)
+        except subprocess.CalledProcessError as e:
+            print(f"  Error processing {source_video.name}: {e}")
+            skipped += 1
+            continue
+
+    print(f"\nPrepared {len(clips)} clips, skipped {skipped}")
+
+    if len(clips) < TOTAL_POSITIONS:
+        print(f"WARNING: Only {len(clips)} clips available but grid has {TOTAL_POSITIONS} positions.")
+        print(f"  Some grid cells will be empty/black.")
 
     return clips
 
@@ -473,15 +579,19 @@ def main():
     # Detect common framerate
     detect_common_framerate(video_files)
 
-    # Extract clips
+    # Extract or prepare clips
     clips_dir = Path("clips_temp")
-    clips = extract_clips(video_files, TOTAL_CLIPS, clips_dir)
+
+    if USE_PRECUT_CLIPS:
+        clips = prepare_precut_clips(video_files, clips_dir)
+    else:
+        clips = extract_clips(video_files, TOTAL_CLIPS, clips_dir)
 
     if len(clips) < TOTAL_POSITIONS:
-        print(f"Error: Only extracted {len(clips)} clips, need at least {TOTAL_POSITIONS}")
+        print(f"Error: Only got {len(clips)} clips, need at least {TOTAL_POSITIONS}")
         sys.exit(1)
 
-    print(f"\nSuccessfully extracted {len(clips)} clips")
+    print(f"\nSuccessfully prepared {len(clips)} clips")
 
     # Concatenate clips for each position
     position_clips_dir = Path("position_videos_temp")
